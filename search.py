@@ -9,7 +9,10 @@ class Search():
         self.tags = datasets['tags']
         self.spark = spark
 
-    def search_user(self, id):
+    def search_user_movies(self, id):
+        return self.ratings.filter(self.ratings.userId==id).count()
+
+    def search_user_genre(self, id):
         pass
 
     def search_users(self, users):
@@ -25,10 +28,10 @@ class Search():
             pass
 
     def search_movie_year(self, year):
-        pass
+        return self.movies.filter(self.movies.title.rlike("("+year+")"))
 
     def search_genre(self, genre):
-        pass
+        return self.movies.filter(self.movies.title.rlike(genre))
 
     def search_genres(self, genres):
         # return [self.search_user(user) for user in users]
