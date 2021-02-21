@@ -18,7 +18,8 @@ def main():
     datasets = read(spark)
     search = Search(datasets, spark)
     # search.search_user_movies("1")
-    search.search_genre("Adventure")
+    # search.search_genre("Adventure")
+    search.search_movie_name(None, "Toy Story (1995)")
     pass
 
 if __name__ == '__main__':
