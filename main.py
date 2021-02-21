@@ -20,6 +20,8 @@ def main():
     # search.search_user_movies("1")
     # search.search_genre("Adventure")
     search.search_movie_name(None, "Toy Story (1995)")
+    # search.search_genre("Adventure")
+    search.list_rating(5)
     pass
 
 if __name__ == '__main__':
