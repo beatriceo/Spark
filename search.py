@@ -1,7 +1,6 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import avg, col
 from pyspark.sql.types import IntegerType
-
+from pyspark.ml.feature import MinMaxScaler
 
 class Search():
 
@@ -29,8 +28,7 @@ class Search():
 
     def search_movie_name(self, id=None, name=None):
         if id is None:
-            id = self.movies.filter(self.movies.title == "Toy Story (1995)").collect()[0].movieId
-            res = self.ratings.filter(self.ratings.movieId==id).agg({"*": "count", "rating":"mean"}).agg({"*": "count", "rating":"mean"})
+            res=self.movies.filter(self.movies.title == "Toy Story (1995)").join(self.ratings,self.ratings.movieId==self.movies.movieId).agg({"*": "count", "rating":"mean"})
         if name is None:
             res = self.ratings.filter(self.ratings.movieId==(self.movies.filter(self.movies.title==name).movieId)).agg({"*": "count", "rating":"mean"})
 
@@ -61,4 +59,12 @@ class Search():
        Beatrice
        '''
     def list_watches(self, n):
+        pass
+
+    def search_user_favourites(self, id):
+        # return [self.search_user(user) for user in users]
+        df = self.ratings.filter(self.ratings.userId == id)
+        df = df.join(self.movies, self.movies.movieId==self.ratings.movieId)
+        df = df.groupBy('genres').agg({"*": "count", "rating":"mean"})
+        scaler = MinMaxScaler(inputCol="Revenue", outputCol="scaledRevenue")
         pass
