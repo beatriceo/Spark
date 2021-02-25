@@ -1,6 +1,10 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.types import IntegerType
-from pyspark.ml.feature import MinMaxScaler
+from pyspark.sql.types import IntegerType, DoubleType
+from pyspark.ml.feature import MinMaxScaler, VectorAssembler
+from pyspark.sql.functions import explode, split, col, min, max, udf
+from pyspark.ml import Pipeline
+from pyspark.sql.window import Window
+
 
 class Search():
 
@@ -65,6 +69,14 @@ class Search():
         # return [self.search_user(user) for user in users]
         df = self.ratings.filter(self.ratings.userId == id)
         df = df.join(self.movies, self.movies.movieId==self.ratings.movieId)
-        df = df.groupBy('genres').agg({"*": "count", "rating":"mean"})
-        scaler = MinMaxScaler(inputCol="Revenue", outputCol="scaledRevenue")
+        df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
+        # minmax_result = df.groupBy('genres').agg(min("watched").alias("min_watched"),max("watched").alias("max_watched"))
+        df = df.groupBy('genres').agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
+        unlist = udf(lambda x: round(float(list(x)[0]), 3), DoubleType())
+        assembler = VectorAssembler(inputCols=["watched"], outputCol="watched_vec")
+        scaler = MinMaxScaler(inputCol="watched_vec", outputCol="watched_scaled")
+        pipeline = Pipeline(stages=[assembler, scaler])
+        scalerModel = pipeline.fit(df)
+        df = scalerModel.transform(df)
+        df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).sort("score").show()
         pass
