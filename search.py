@@ -1,4 +1,5 @@
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, explode, split, count
 from pyspark.sql.types import IntegerType
 from pyspark.ml.feature import MinMaxScaler
 
@@ -18,7 +19,10 @@ class Search():
     Beatrice
     '''
     def search_user_genre(self, id):
-        pass
+        df = self.ratings.filter(self.ratings.userId == id)
+        df = df.join(self.movies, self.movies.movieId == self.ratings.movieId)
+        df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
+        return df.groupBy("genres").agg(count("*"))
 
     def search_users(self, users):
         # return [self.search_user(user) for user in users]
@@ -59,7 +63,10 @@ class Search():
        Beatrice
        '''
     def list_watches(self, n):
-        pass
+        ratings = self.ratings.alias('ratings')
+        movies = self.movies.alias('movies')
+        movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
+        return movies_ratings.groupBy(col("movies.title")).agg(count("*").alias("watches")).orderBy("watches", ascending=False).take(n)
 
     def search_user_favourites(self, id):
         # return [self.search_user(user) for user in users]
