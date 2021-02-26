@@ -87,5 +87,6 @@ class Search():
         pipeline = Pipeline(stages=[assembler, scaler])
         scalerModel = pipeline.fit(df)
         df = scalerModel.transform(df)
-        df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).sort("score").show()
+        df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).orderBy("score", ascending=False)
+        df.select(col('genres'), col('score')).show()
         pass
