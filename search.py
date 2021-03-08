@@ -38,9 +38,12 @@ class Search():
 
     def search_movie_name(self, id=None, name=None):
         if id is None:
-            res=self.movies.filter(self.movies.title == "Toy Story (1995)").join(self.ratings,self.ratings.movieId==self.movies.movieId).agg({"*": "count", "rating":"mean"})
+            df = self.movies.title.rlike(name)
+            df = self.movies.filter(df)
+            df = df.join(self.ratings,'movieId').select("movieId", "rating")
+            df = df.groupBy("movieId").agg({"*": "count", "rating": "mean"}).collect()
         if name is None:
-            res = self.ratings.filter(self.ratings.movieId==(self.movies.filter(self.movies.title==name).movieId)).agg({"*": "count", "rating":"mean"})
+            res = self.ratings.filter(self.ratings.movieId==id).agg({"*": "count", "rating":"mean"})
 
     def search_movie_year(self, year):
         return self.movies.filter(self.movies.title.rlike("(" + year + ")"))
@@ -75,7 +78,6 @@ class Search():
         return movies_ratings.groupBy(col("movies.title")).agg(count("*").alias("watches")).orderBy("watches", ascending=False).take(n)
 
     def search_user_favourites(self, id):
-        # return [self.search_user(user) for user in users]
         df = self.ratings.filter(self.ratings.userId == id)
         df = df.join(self.movies, self.movies.movieId==self.ratings.movieId)
         df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
