@@ -4,7 +4,7 @@ from pyspark.ml.feature import MinMaxScaler, VectorAssembler
 from pyspark.sql.functions import explode, split, col, min, max, udf
 from pyspark.ml import Pipeline
 from pyspark.sql.window import Window
-
+import pandas as pd
 from pyspark.sql.functions import col, explode, split, count
 from pyspark.sql.types import IntegerType
 from pyspark.ml.feature import MinMaxScaler
@@ -66,7 +66,9 @@ class Search():
         movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
         # I've just done a groupBy on movieTitle instead of movieId but this might not be the best idea
         # because the README says there might be errors in the titles
-        return movies_ratings.groupBy(col("movies.title")).avg("rating").orderBy("avg(rating)", ascending=False).take(n)
+        movies_ratings = movies_ratings.groupBy(col("movies.movieId")).agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
+        movies_ratings = movies_ratings.join(movies, movies.movieId == movies_ratings.movieId).orderBy(["avg(rating)", "watched"], ascending=False)
+        return movies_ratings.limit(n)
 
     '''
        Beatrice
@@ -75,7 +77,10 @@ class Search():
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
         movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
-        return movies_ratings.groupBy(col("movies.title")).agg(count("*").alias("watches")).orderBy("watches", ascending=False).take(n)
+        '''sam'''
+        movies_ratings = movies_ratings.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
+        movies_ratings =  movies_ratings.join(movies, movies.movieId == movies_ratings.movieId).orderBy("watches", ascending=False)
+        return movies_ratings.limit(n)
 
     def search_user_favourites(self, id):
         df = self.ratings.filter(self.ratings.userId == id)
@@ -89,6 +94,30 @@ class Search():
         pipeline = Pipeline(stages=[assembler, scaler])
         scalerModel = pipeline.fit(df)
         df = scalerModel.transform(df)
-        df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).orderBy("score", ascending=False)
-        df.select(col('genres'), col('score')).show()
-        pass
+        # df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).orderBy("score", ascending=False)
+        df.toPandas().to_csv("test.csv")
+        # df.select(col('genres'), col('score')).show()
+        return df.collect()
+
+    def searched_highest_rated(self, id):
+        df = self.ratings.filter(self.ratings.userId == id)
+        df = df.join(self.movies, self.movies.movieId == self.ratings.movieId)
+        df = df.orderBy("rating", ascending=False)
+        return df
+
+    def filter_decade(self, decade):
+        ratings = self.ratings.alias('ratings')
+        movies = self.movies.alias('movies')
+        watches = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
+        '''sam'''
+        watches = watches.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
+        watches = watches.join(movies, movies.movieId == watches.movieId).orderBy("watches",ascending=False)
+        watches = watches.filter(watches.title.rlike("("+decade+"\d)"))
+        return watches.limit(1).toPandas()
+
+    def most_viewed_decade(self):
+        most_watched = pd.DataFrame()
+        for i in range(190,202):
+            most_watched[str(i)+"0-"+str(i)+"9"] = (self.filter_decade(str(i))).iloc[0]
+
+        return most_watched.T

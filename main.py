@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 import os
 from search import Search
-
+from plotting import Plotting
 
 def store(spark, datasets):
     pass
@@ -16,12 +16,15 @@ def read(spark):
 def main():
     spark = SparkSession.builder.master("local").appName("Movies").config("conf-key", "conf-value").getOrCreate()
     datasets = read(spark)
-    search = Search(datasets, spark)
+    plotting = Plotting(datasets, spark)
+    plotting.gen_movies_report()
+    # plotting.gen_user_report("1")
+    # search = Search(datasets, spark)
     # search.search_user_movies("1")
     # search.search_genre("Adventure")
     # search.search_movie_name(None, "Toy Story (1995)")
     # search.search_movie_name(None, "Toy Story")
-    search.search_movie_name(1, None)
+    # search.search_movie_name(1, None)
     # search.search_genre("Adventure")
     # search.list_rating(5)
     # search.search_user_favourites("1")
