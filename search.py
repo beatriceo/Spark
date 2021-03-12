@@ -30,20 +30,20 @@ class Search():
         df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
         return df.groupBy("genres").agg(count("*"))
 
-    def search_users(self, users):
-        # return [self.search_user(user) for user in users]
-        for user in users:
-            self.search_user(user)
-        pass
+    def search_users_movies(self, users):
+        return [self.search_user_movies(user) for user in users]
+#         for user in users:
+#             self.search_user(user)
+#         pass
 
-    def search_movie_name(self, id=None, name=None):
+    def search_movie(self, id=None, name=None):
         if id is None:
             df = self.movies.title.rlike(name)
             df = self.movies.filter(df)
             df = df.join(self.ratings,'movieId').select("movieId", "rating")
-            df = df.groupBy("movieId").agg({"*": "count", "rating": "mean"}).collect()
+            return df.groupBy("movieId").agg({"*": "count", "rating": "mean"}).join(self.movies,'movieId').select("movieId","avg(rating)","count(1)","title")
         if name is None:
-            res = self.ratings.filter(self.ratings.movieId==id).agg({"*": "count", "rating":"mean"})
+            return self.ratings.filter(self.ratings.movieId==id).groupBy("movieId").agg({"*": "count", "rating":"mean"}).join(self.movies,'movieId').select("movieId","avg(rating)","count(1)","title")
 
     def search_movie_year(self, year):
         return self.movies.filter(self.movies.title.rlike("(" + year + ")"))
@@ -94,10 +94,10 @@ class Search():
         pipeline = Pipeline(stages=[assembler, scaler])
         scalerModel = pipeline.fit(df)
         df = scalerModel.transform(df)
-        # df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).orderBy("score", ascending=False)
+        df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).orderBy("score", ascending=False)
         df.toPandas().to_csv("test.csv")
         # df.select(col('genres'), col('score')).show()
-        return df.collect()
+        return df.select(col('genres'), col('score'))
 
     def searched_highest_rated(self, id):
         df = self.ratings.filter(self.ratings.userId == id)
