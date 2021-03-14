@@ -1,6 +1,7 @@
 from search import Search
 import pandas as pd
 from matplotlib import pyplot as plt
+from wordcloud import WordCloud
 
 class Plotting():
 
@@ -55,3 +56,25 @@ class Plotting():
         axs[1].set_xlabel('Movies')
         plt.xticks(rotation = 20)
         return
+
+    def gen_most_watched_year(self, year, limit):
+        most_watched = self.search.most_watched_year(year, limit)
+        fig, axs = plt.subplots()
+        axs.bar(
+            [str(i) + "\n" + j.replace(" ", "\n") for i, j in zip(most_watched.index, most_watched['title'])],
+            most_watched['watches'])
+        axs.set_ylabel('Watches')
+        axs.set_xlabel('Movies')
+        plt.xticks(rotation=20)
+
+    def gen_movie_wordcloud(self, movie):
+        tags = self.search.search_tags(movie)
+        text = " ".join([tag['tag'] for tag in tags])
+        wordcloud = WordCloud().generate(text)
+
+        plt.suptitle(movie+" tags word cloud")
+        # Display the generated image:
+        plt.imshow(wordcloud, interpolation='bilinear')
+        plt.axis("off")
+        plt.show()
+

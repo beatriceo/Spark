@@ -120,3 +120,19 @@ class Search():
             most_watched[str(i)+"0-"+str(i)+"9"] = (self.filter_decade(str(i))).iloc[0]
 
         return most_watched.T
+
+    def most_watched_year(self, year, n):
+        ratings = self.ratings.alias('ratings')
+        movies = self.movies.alias('movies')
+        watches = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
+        '''sam'''
+        watches = watches.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
+        watches = watches.join(movies, movies.movieId == watches.movieId).orderBy("watches", ascending=False)
+        watches = watches.filter(watches.title.rlike("(" + year + ")"))
+        return watches.limit(n).toPandas()
+
+    def search_tags(self, name):
+        df = self.movies.title.rlike(name)
+        df = self.movies.filter(df)
+        df = df.join(self.ratings, 'movieId').select("movieId").distinct()
+        return self.tags.join(df, df.movieId==self.tags.movieId).select('tag').collect()
