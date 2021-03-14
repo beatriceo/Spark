@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.types import IntegerType, DoubleType
 from pyspark.ml.feature import MinMaxScaler, VectorAssembler
-from pyspark.sql.functions import explode, split, col, min, max, udf
+from pyspark.sql.functions import explode, split, col, min, max, udf, mean, sqrt
 from pyspark.ml import Pipeline
 from pyspark.sql.window import Window
 import pandas as pd
@@ -136,3 +136,63 @@ class Search():
         df = self.movies.filter(df)
         df = df.join(self.ratings, 'movieId').select("movieId").distinct()
         return self.tags.join(df, df.movieId==self.tags.movieId).select('tag').collect()
+
+    def compare_users(self, user_a, user_b):
+
+        # Adapted from: https://stackoverflow.com/questions/44580644/subtract-mean-from-pyspark-dataframe/49606192
+        def normalize(df, columns):
+            agg_expr = []
+            for column in columns:
+                agg_expr.append(mean(df[column]).alias(column))
+            averages = df.agg(*agg_expr).collect()[0]
+            select_expr = df.columns
+            for column in columns:
+                select_expr.append((df[column] - averages[column]).alias('%s-avg(%s)' % (column, column)))
+            return df.select(select_expr)
+
+        '''
+        Calculate similarity using Pearson's correlation coefficient (slide 9)
+        https://personal.utdallas.edu/~nrr150130/cs6375/2015fa/lects/Lecture_23_CF.pdf
+
+        let i = movieId
+        similarity(x, y) = sum((rating_xi - mean rating x) * (rating_yi - mean rating y)) / (sqrt(sum(rating_xi - mean rating x)^2) * sqrt(sum(rating_yi - mean rating y)^2))
+        '''
+
+        # get movie ids watched by user a
+        user_a_data = self.ratings.filter(self.ratings.userId == user_a) \
+            .alias('userA') \
+            .select('movieId', col('rating').alias('ratingA'))
+
+        # get movie ids watched by user b
+        user_b_data = self.ratings.filter(self.ratings.userId == user_b) \
+            .alias('userB') \
+            .select('movieId', col('rating').alias('ratingB'))
+
+        intersection = user_a_data.join(user_b_data, ['movieId'], 'inner')
+
+        # returns a dataframe with ratings subtracted by their respective mean ratings
+        test = normalize(intersection, ['ratingA', 'ratingB'])
+        # test.show()
+
+        numerator = test.withColumn('numerator', test['ratingA-avg(ratingA)'] * test['ratingB-avg(ratingB)']) \
+            .agg({'numerator': 'sum'}).withColumnRenamed("sum(numerator)", "numerator")
+        # numerator.show()
+
+        denom_1_temp = test.withColumn('intermediate', test['ratingA-avg(ratingA)'] * test['ratingA-avg(ratingA)']) \
+            .agg({'intermediate': 'sum'})
+
+        # the first sqrt in the denominator
+        denom_1 = denom_1_temp.withColumn('denom1', sqrt(col('sum(intermediate)'))).select('denom1')
+        # denom_1.show()
+
+        denom_2_temp = test.withColumn('intermediate', test['ratingB-avg(ratingB)'] * test['ratingB-avg(ratingB)']) \
+            .agg({'intermediate': 'sum'})
+
+        # the second sqrt in the denominator
+        denom_2 = denom_2_temp.withColumn('denom2', sqrt(col('sum(intermediate)'))).select('denom2')
+        # denom_2.show()
+
+        similarity = numerator.join(denom_1).join(denom_2)\
+            .withColumn('similarity', col('numerator') / col('denom1') * col('denom2')).select('similarity')
+        # similarity.show()
+        return similarity
