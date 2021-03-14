@@ -49,13 +49,10 @@ class Search():
         return self.movies.filter(self.movies.title.rlike("(" + year + ")"))
 
     def search_genre(self, genre):
-        return self.movies.filter(self.movies.title.rlike(genre))
+        return self.movies.filter(self.movies.genres.rlike(genre))
 
     def search_genres(self, genres):
-        # return [self.search_user(user) for user in users]
-        for genre in genres:
-            self.search_genre(genre)
-        pass
+        return [self.search_genre(genre) for genre in genres]
 
     '''
        Beatrice
@@ -67,7 +64,8 @@ class Search():
         # I've just done a groupBy on movieTitle instead of movieId but this might not be the best idea
         # because the README says there might be errors in the titles
         movies_ratings = movies_ratings.groupBy(col("movies.movieId")).agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
-        movies_ratings = movies_ratings.join(movies, movies.movieId == movies_ratings.movieId).orderBy(["avg(rating)", "watched"], ascending=False)
+        movies_ratings = movies_ratings.join(movies, ['movieId'])\
+            .orderBy(["avg(rating)", "watched"], ascending=False)
         return movies_ratings.limit(n)
 
     '''
@@ -79,7 +77,8 @@ class Search():
         movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
         '''sam'''
         movies_ratings = movies_ratings.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
-        movies_ratings =  movies_ratings.join(movies, movies.movieId == movies_ratings.movieId).orderBy("watches", ascending=False)
+        movies_ratings = movies_ratings.join(movies, ["movieId"])\
+            .orderBy("watches", ascending=False)
         return movies_ratings.limit(n)
 
     def search_user_favourites(self, id):
