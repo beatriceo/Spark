@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.types import IntegerType, DoubleType
+from pyspark.sql.types import IntegerType, DoubleType, FloatType, ArrayType, StringType
 from pyspark.ml.feature import MinMaxScaler, VectorAssembler
 from pyspark.sql.functions import explode, split, col, min, max, udf, mean, sqrt
 from pyspark.ml import Pipeline
@@ -8,13 +8,15 @@ import pandas as pd
 from pyspark.sql.functions import col, explode, split, count
 from pyspark.sql.types import IntegerType
 from pyspark.ml.feature import MinMaxScaler
+from pyspark.ml.evaluation import RegressionEvaluator
+from pyspark.ml.recommendation import ALS
 
 class Search():
 
     def __init__(self, datasets, spark):
         self.movies = datasets['movies']
         self.links = datasets['links']
-        self.ratings = datasets['ratings'].withColumn("rating", datasets["ratings"].rating.cast(IntegerType()))
+        self.ratings = datasets['ratings'].withColumn("rating", datasets["ratings"].rating.cast(FloatType()))
         self.tags = datasets['tags']
         self.spark = spark
 
@@ -196,3 +198,39 @@ class Search():
             .withColumn('similarity', col('numerator') / col('denom1') * col('denom2')).select('similarity')
         # similarity.show()
         return similarity
+
+    # based on https://spark.apache.org/docs/latest/ml-collaborative-filtering.html#collaborative-filtering
+    def recommend(self):
+        ratings = self.ratings
+        ratings = ratings.withColumn("userId", ratings.userId.cast(IntegerType()))
+        ratings = ratings.withColumn("movieId", ratings.movieId.cast(IntegerType()))
+
+        (training, test) = ratings.randomSplit([0.8, 0.2])
+        als = ALS(maxIter=5, regParam=0.01, userCol="userId", itemCol="movieId", ratingCol="rating",
+                  coldStartStrategy="drop")
+
+        model = als.fit(training)
+        return model
+
+    def recommend_n_movies_for_users(self, n, users):
+        model = self.recommend()
+        users = self.ratings.where(self.ratings.userId.isin(users)).distinct()
+
+        subset = model.recommendForUserSubset(users, n)
+
+        def get_predicted_movie_ids(l):
+            return [x[0] for x in l]
+
+        def get_predicted_ratings(l):
+            return [x[1] for x in l]
+
+        get_predicted_movie_ids_udf = udf(get_predicted_movie_ids, ArrayType(IntegerType()))
+        get_predicted_ratings_udf = udf(get_predicted_ratings, ArrayType(FloatType()))
+
+        formatted_subset = subset.withColumn('movieIds', get_predicted_movie_ids_udf(col('recommendations'))) \
+            .withColumn('predictedRatings', get_predicted_ratings_udf(col('recommendations'))) \
+            .select(['userId', explode('movieIds').alias('movieId')])\
+            .join(self.movies, 'movieId')\
+            .select('userId', 'title')
+
+        return formatted_subset
