@@ -17,9 +17,10 @@ def main():
     spark = SparkSession.builder.master("local").appName("Movies").config("conf-key", "conf-value").getOrCreate()
     datasets = read(spark)
     plotting = Plotting(datasets, spark)
-    plotting.gen_movie_wordcloud("Toy Story")
+    # plotting.gen_movie_wordcloud("Toy Story")
+    # plotting.gen_movies_report()
     # plotting.gen_user_report("1")
-    # search = Search(datasets, spark)
+    search = Search(datasets, spark)
     # search.search_tags("Toy Story")
     # search.search_user_movies("1")
     # search.search_genre("Adventure")
@@ -29,6 +30,7 @@ def main():
     # search.search_genre("Adventure")
     # search.list_rating(5)
     # search.search_user_favourites("1")
+    search.search_users_movies(["1","2"])
     pass
 
 if __name__ == '__main__':
