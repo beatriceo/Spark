@@ -5,7 +5,7 @@ from pyspark.sql.functions import explode, split, col, min, max, udf, mean, sqrt
 from pyspark.ml import Pipeline
 from pyspark.sql.window import Window
 import pandas as pd
-from pyspark.sql.functions import col, explode, split, count
+from pyspark.sql.functions import col, explode, split, count, lit
 from pyspark.sql.types import IntegerType
 from pyspark.ml.feature import MinMaxScaler
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -20,8 +20,16 @@ class Search():
         self.tags = datasets['tags']
         self.spark = spark
 
-    def search_user_movies(self, id):
+    def search_user_movie_count(self, id):
         return self.ratings.filter(self.ratings.userId == id).count()
+
+
+    def search_user_movies(self, id):
+        df = self.ratings.filter(self.ratings.userId == id)
+        return df.join(self.movies, self.movies.movieId == self.ratings.movieId)
+
+    def search_users_movies(self, ids):
+        return [self.search_users_movies(id) for id in ids]
 
     '''
     Beatrice
@@ -33,23 +41,16 @@ class Search():
         return df.groupBy("genres").agg(count("*"))
 
     """
+    Given a list of users, return the count of each genre the user has watched
+    """
+    def search_users_genres(self, ids):
+        return [self.search_user_genre(id) for id in ids]
+
+    """
     Given a list of users, return movies each user has watched
     """
-    def search_users_movies(self, users):
-        return [self.search_user_movies(user) for user in users]
-        # Creates a regex 'or' statement of the user ids
-        regex = '(/^{}$/)'.format('$/|/^'.join(users))
-        # Lazy transformation getting all user Ids that fulfill the regex
-        df = self.ratings.userId.rlike(regex)
-        # Lazy transformation to filter the ratings table to contain only matches
-        df = self.ratings.filter(df)
-        # Lazy join with the movies table in order to attach genres
-        df = df.join(self.movies, self.movies.movieId == self.ratings.movieId)
-        # Create new entries for each genre a movie is in so that each entry contains only a single genre
-        df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
-        # Group by user Id and genre, counting occurrences of each pair as the
-        # number of movies in the genre watched by that user
-        return df.groupBy("genres", "userId").agg(count("*"))
+    def search_users_movie_counts(self, ids):
+        return [self.search_user_movie_count(id) for id in ids]
 
     """
     Given an ID or name, return the movie/movies that match the name or ID along with 
@@ -66,7 +67,7 @@ class Search():
             # only for the matched movies
             df = df.join(self.ratings,'movieId').select("movieId", "rating")
         # If the search is given an id
-        if name is None:
+        elif name is None:
             # Lazy transformation to filter the ratings table by the id
             df = self.ratings.filter(self.ratings.movieId==id)
         else:
@@ -105,57 +106,46 @@ class Search():
     def list_rating(self, n):
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
-        movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
-        # I've just done a groupBy on movieTitle instead of movieId but this might not be the best idea
-        # because the README says there might be errors in the titles
-        movies_ratings = movies_ratings.groupBy(col("movies.movieId")).agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
-        movies_ratings = movies_ratings.join(movies, ['movieId'])\
-            .orderBy(["avg(rating)", "watched"], ascending=False)
-        return movies_ratings.limit(n)
-
+        ratings = ratings.groupBy("movieId").agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watched")
+        # movies_ratings = ratings.join(movies, ['movieId'])\
+        #     .orderBy(["avg(rating)", "watched"], ascending=False)
+        ratings = ratings.join(movies, movies.movieId==ratings.movieId).orderBy(["avg(rating)", "watched"], ascending=False)
+        return ratings.limit(n)
     '''
        Beatrice
        '''
     def list_watches(self, n):
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
-        movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
+        # movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
         '''sam'''
-        movies_ratings = movies_ratings.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
-        movies_ratings = movies_ratings.join(movies, ["movieId"])\
-            .orderBy("watches", ascending=False)
-        return movies_ratings.limit(n)
+        watches = ratings.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
+        watches = watches.join(movies, movies.movieId==watches.movieId).orderBy("watches", ascending=False)
+        return watches.limit(n)
 
     """
-    Given a user id, return a list of their favourite genres, with the score for how much a user likes a genre
-    defined as their average rating for the genre multiplied by the number of movies in the genre they have watched
-    scaled between 0 and 1
+        Given a user id, return a list of their favourite genres, with the score for how much a user likes a genre
+        defined as their average rating for the genre multiplied by the number of movies in the genre they have watched
+        scaled between 0 and 1
     """
     def search_user_favourites(self, id):
         # Perform the same transformations performed in the search_user_genre method
         df = self.ratings.filter(self.ratings.userId == id)
         df = df.join(self.movies, self.movies.movieId==self.ratings.movieId)
         df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
-        # minmax_result = df.groupBy('genres').agg(min("watched").alias("min_watched"),max("watched").alias("max_watched"))
         df = df.groupBy('genres').agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
-        # Define a function to retieve the first item in each list in a list of lists as a float
-        unlist = udf(lambda x: round(float(list(x)[0]), 3), DoubleType())
-        # Create an assembler to turn the watched column into a vector (required by MinMax scaler)
-        assembler = VectorAssembler(inputCols=["watched"], outputCol="watched_vec")
-        # Define a minmax scaler
-        scaler = MinMaxScaler(inputCol="watched_vec", outputCol="watched_scaled")
-        # Add the vector assemble and pipeline to a pipeline
-        pipeline = Pipeline(stages=[assembler, scaler])
-        # Fit the scaler to the dataframe and transform the dataframe
-        scalerModel = pipeline.fit(df)
-        df = scalerModel.transform(df)
-        # Create the score column in the dataframe by multiplaying the scaled watched
-        # value by the average rating and sort in descending order
-        df = df.withColumn('score', df['avg(rating)'] * unlist(df['watched_scaled'])).orderBy("score", ascending=False)
+        max = df.agg({"watched": "max"}).take(1)[0][0]
+        min = df.agg({"watched": "min"}).take(1)[0][0]
+        df = df.withColumn("max", lit(max))
+        df = df.withColumn("min", lit(min))
+        df = df.withColumn('score', df['avg(rating)'] * ((df['watched']-df['min'])/(df['max']-df['min']))).orderBy("score", ascending=False)
+        df.show()
         # df.toPandas().to_csv("test.csv")
         # df.select(col('genres'), col('score')).show()
         return df
         # return df.select(col('genres'), col('score'))
+
+
 
     """
     Given a user Id, return the movies watched by the user ordered by rating (descending)
