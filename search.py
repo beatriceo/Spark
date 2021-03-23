@@ -38,7 +38,7 @@ class Search():
         df = self.ratings.filter(self.ratings.userId == id)
         df = df.join(self.movies, self.movies.movieId == self.ratings.movieId)
         df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
-        return df.groupBy('genres').agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
+        return df.groupBy('genres').agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watches")
 
     """
     Given a list of users, return the count of each genre the user has watched
@@ -106,11 +106,11 @@ class Search():
     def list_rating(self, n):
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
-        ratings = ratings.groupBy("movieId").agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watched")
+        ratings = ratings.groupBy("movieId").agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watches")
         # movies_ratings = ratings.join(movies, ['movieId'])\
         #     .orderBy(["avg(rating)", "watched"], ascending=False)
-        ratings = ratings.join(movies, movies.movieId==ratings.movieId).orderBy(["avg(rating)", "watched"], ascending=False)
-        return ratings.limit(n)
+        ratings = ratings.join(movies, movies.movieId==ratings.movieId).orderBy(["avg(rating)", "watches"], ascending=False)
+        return ratings.limit(n).toPandas()
     '''
        Beatrice
        '''
@@ -121,7 +121,7 @@ class Search():
         '''sam'''
         watches = ratings.groupBy(col("ratings.movieId")).agg(count("*").alias("watches"))
         watches = watches.join(movies, movies.movieId==watches.movieId).orderBy("watches", ascending=False)
-        return watches.limit(n)
+        return watches.limit(n).toPandas()
 
     """
         Given a user id, return a list of their favourite genres, with the score for how much a user likes a genre
@@ -131,16 +131,16 @@ class Search():
     def search_user_favourites(self, id):
         # Get the dataframe containing how many movies and average rating of
         # movies in each genre and sort by number watched
-        df = self.search_user_genre(id).orderBy("watched", ascending=False)
+        df = self.search_user_genre(id).orderBy("watches", ascending=False)
         # Create columns for the min and max watched value
-        max = df.agg({"watched": "max"}).take(1)[0][0]
-        min = df.agg({"watched": "min"}).take(1)[0][0]
+        max = df.agg({"watches": "max"}).take(1)[0][0]
+        min = df.agg({"watches": "min"}).take(1)[0][0]
         # Append the columns to the dataframe
         df = df.withColumn("max", lit(max))
         df = df.withColumn("min", lit(min))
         # Create a new column with the score as the average rating times the
         # number watched scaled using the min and max column
-        df = df.withColumn('score', df['avg(rating)'] * ((df['watched']-df['min'])/(df['max']-df['min']))).orderBy("score", ascending=False)
+        df = df.withColumn('score', df['avg(rating)'] * ((df['watches']-df['min'])/(df['max']-df['min']))).orderBy("score", ascending=False)
         # df.show()
         # df.toPandas().to_csv("test.csv")
         # df.select(col('genres'), col('score')).show()
@@ -162,45 +162,45 @@ class Search():
         return df
 
     """
-    Given the first 3 digits of a year (representing a decade), return the most watched movie of that 
-    decade
+    Given the first 3 digits of a year (representing a decade), return the top movies of 
+    the decade sorted by order up to a limit
     """
-    def filter_decade(self, decade):
+    def filter_decade(self, decade, limit, order):
         # Perform the same transformations performed in list_watches
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
+
         watches = movies.join(ratings, movies.movieId == ratings.movieId)
-        watches = watches.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
-        watches = watches.join(movies, movies.movieId == watches.movieId).orderBy("watches",ascending=False)
         # Filter the movies to only ones that contain the first 3 digits of the decade followed
         # by any digit surrounded by brackets
-        watches = watches.filter(watches.title.rlike("("+decade+"\d)"))
-        # Return the top result
-        return watches.limit(1).toPandas()
+        watches = watches.filter(watches.title.rlike("(" + decade + "\d)"))
+        watches = watches.groupBy(col("movies.movieId")).agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watches")
+        watches = watches.join(movies, movies.movieId == watches.movieId).orderBy(order,ascending=False)
+        return watches.limit(limit).toPandas()
 
     """
     Return the most watched movies of each decade
     """
-    def most_viewed_decade(self):
+    def top_each_decade(self, column):
         most_watched = pd.DataFrame()
-        # Call filter decade on every decade between 1900 and 2020
+        # Call filter decade on every decade between 1900 and 2020 and get the first result
         for i in range(190,202):
-            most_watched[str(i)+"0-"+str(i)+"9"] = (self.filter_decade(str(i))).iloc[0]
+            most_watched[str(i)+"0-"+str(i)+"9"] = (self.filter_decade(str(i),1,column)).iloc[0]
         # Return the transposed result
         return most_watched.T
 
     """
-    Given a year and a value n, return the n most watched movies of the year
+    Given a year and a value n, return the top n movies of that year sorted by order
     """
-    def most_watched_year(self, year, n):
+    def filter_year(self, year, n, order):
         # Perform the same transformations performed in list_watches
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
         watches = movies.join(ratings, movies.movieId == ratings.movieId)
-        watches = watches.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
-        watches = watches.join(movies, movies.movieId == watches.movieId).orderBy("watches", ascending=False)
         # Filter the movies to only ones that include the year surrounded by brackets
         watches = watches.filter(watches.title.rlike("(" + year + ")"))
+        watches = watches.groupBy(col("movies.movieId")).agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watches")
+        watches = watches.join(movies, movies.movieId == watches.movieId).orderBy(order, ascending=False)
         # Return the top n results
         return watches.limit(n).toPandas()
 

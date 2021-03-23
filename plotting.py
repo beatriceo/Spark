@@ -40,44 +40,19 @@ class Plotting():
         plt.show()
         pass
 
-    """
-    Display the most watched movies for each decade and of all time, and the highest rated 
-    movies of all time on bar charts
-    """
-    def gen_movies_report(self):
-        # Get the tables to be plotted
-        movies_ratings = self.search.list_rating(10).toPandas()
-        movies_watched = self.search.list_watches(10).toPandas()
-        most_watched_decade = self.search.most_viewed_decade()
-        fig, axs = plt.subplots(3, figsize=(20,20))
-        fig.suptitle('Movies report')
-        axs[0].bar([i+"\n"+j.replace(" ","\n") for i,j in zip(most_watched_decade.index,movies_watched['title'])], movies_watched['watches'])
-        axs[0].set_ylabel('Watches')
-        axs[0].set_xlabel('Movies')
-        plt.xticks(rotation=20)
-        axs[1].bar([i+"\n"+j.replace(" ","\n") for i,j in zip(most_watched_decade.index,most_watched_decade['title'])], most_watched_decade['watches'])
-        axs[1].set_ylabel('Watches')
-        axs[1].set_xlabel('Movies')
-        plt.xticks(rotation=20)
-        axs[2].bar([i+"\n"+j.replace(" ","\n") for i,j in zip(most_watched_decade.index,movies_ratings['title'])], movies_ratings['avg(rating)'])
-        axs[2].set_ylabel('Average rating')
-        axs[2].set_xlabel('Movies')
-        plt.xticks(rotation = 20)
-        plt.show()
-        return
 
     """
-    Given a year and a limit, plot the most watched movies of the year
+    Given a function that returns a dataframe and a column name, plot the values in the column in a bar chart
     """
-    def gen_most_watched_year(self, year, limit):
-        most_watched = self.search.most_watched_year(year, limit)
-        fig, axs = plt.subplots(figsize=(20,20))
+    def generic_plot(self, most_watched, column):
+        fig, axs = plt.subplots(figsize=(20, 10))
         axs.bar(
             [str(i) + "\n" + j.replace(" ", "\n") for i, j in zip(most_watched.index, most_watched['title'])],
-            most_watched['watches'])
-        axs.set_ylabel('Watches')
+            most_watched[column])
+        axs.set_ylabel(column)
         axs.set_xlabel('Movies')
         plt.xticks(rotation=20)
+
 
     """
     Given a movie, generate a word cloud of the most frequent tags for the movie
@@ -87,7 +62,7 @@ class Plotting():
         # Join the tags into a string separated by spaces to be used by wordcloud
         text = " ".join([tag['tag'] for tag in tags])
         wordcloud = WordCloud().generate(text)
-        plt.rcParams["figure.figsize"] = (20,20)
+        plt.rcParams["figure.figsize"] = (10,10)
         plt.suptitle(movie+" tags word cloud")
         # Display the generated image:
         plt.imshow(wordcloud, interpolation='bilinear')
