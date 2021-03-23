@@ -15,12 +15,10 @@ class Plotting():
     def gen_user_report(self, id, favourites=8):
         # # Get the users highest rated movies
         # self.search.searched_highest_rated(id)
-        plt.plo
-        fig, axs = plt.subplots(2, figsize=(10,20))
+        fig, axs = plt.subplots(2, figsize=(20,20))
         fig.suptitle('User report')
-        df = pd.read_csv("./test.csv").sort_values('watched', ascending=False)
         # Get the user's favourite movies
-        df = self.search.search_user_favourites(id).toPandas()
+        df = self.search.search_user_genre(id).orderBy("watched", ascending=False).toPandas()
         # Group all genres that place after the favourites parameter into 'others'
         df_other = df[:favourites].copy()
         new_row = pd.DataFrame(data={
@@ -33,9 +31,12 @@ class Plotting():
         axs[0].pie(df_other['watched'], labels=df_other['genres'], autopct='%1.1f%%',
                 shadow=True, startangle=90)
         axs[0].axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+        axs[0].set_title("Proportion of movies watched in each genre")
         axs[1].bar(df_other['genres'], df_other['avg(rating)'])
         axs[1].set_ylabel('Average rating')
         axs[1].set_xlabel('Highest rated genres')
+        axs[1].set_title("Average rating for each genre watched")
+        plt.xticks(rotation=20)
         plt.show()
         pass
 
@@ -70,7 +71,7 @@ class Plotting():
     """
     def gen_most_watched_year(self, year, limit):
         most_watched = self.search.most_watched_year(year, limit)
-        fig, axs = plt.subplots()
+        fig, axs = plt.subplots(figsize=(20,20))
         axs.bar(
             [str(i) + "\n" + j.replace(" ", "\n") for i, j in zip(most_watched.index, most_watched['title'])],
             most_watched['watches'])
@@ -86,7 +87,7 @@ class Plotting():
         # Join the tags into a string separated by spaces to be used by wordcloud
         text = " ".join([tag['tag'] for tag in tags])
         wordcloud = WordCloud().generate(text)
-
+        plt.rcParams["figure.figsize"] = (20,20)
         plt.suptitle(movie+" tags word cloud")
         # Display the generated image:
         plt.imshow(wordcloud, interpolation='bilinear')

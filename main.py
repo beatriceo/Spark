@@ -29,7 +29,9 @@ def main():
     # search.search_movie_name(1, None)
     # search.search_genre("Adventure")
     # search.list_rating(5)
+    # search.search_user_favourites("1")
     # search.search_users_movies(["1","2"])
+    search.compare_users("1","2")
     pass
 
 if __name__ == '__main__':

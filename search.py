@@ -38,7 +38,7 @@ class Search():
         df = self.ratings.filter(self.ratings.userId == id)
         df = df.join(self.movies, self.movies.movieId == self.ratings.movieId)
         df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
-        return df.groupBy("genres").agg(count("*"))
+        return df.groupBy('genres').agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
 
     """
     Given a list of users, return the count of each genre the user has watched
@@ -119,7 +119,7 @@ class Search():
         movies = self.movies.alias('movies')
         # movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
         '''sam'''
-        watches = ratings.groupBy(col("movies.movieId")).agg(count("*").alias("watches"))
+        watches = ratings.groupBy(col("ratings.movieId")).agg(count("*").alias("watches"))
         watches = watches.join(movies, movies.movieId==watches.movieId).orderBy("watches", ascending=False)
         return watches.limit(n)
 
@@ -129,17 +129,19 @@ class Search():
         scaled between 0 and 1
     """
     def search_user_favourites(self, id):
-        # Perform the same transformations performed in the search_user_genre method
-        df = self.ratings.filter(self.ratings.userId == id)
-        df = df.join(self.movies, self.movies.movieId==self.ratings.movieId)
-        df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
-        df = df.groupBy('genres').agg({"*": "count", "rating":"mean"}).withColumnRenamed("count(1)", "watched")
+        # Get the dataframe containing how many movies and average rating of
+        # movies in each genre and sort by number watched
+        df = self.search_user_genre(id).orderBy("watched", ascending=False)
+        # Create columns for the min and max watched value
         max = df.agg({"watched": "max"}).take(1)[0][0]
         min = df.agg({"watched": "min"}).take(1)[0][0]
+        # Append the columns to the dataframe
         df = df.withColumn("max", lit(max))
         df = df.withColumn("min", lit(min))
+        # Create a new column with the score as the average rating times the
+        # number watched scaled using the min and max column
         df = df.withColumn('score', df['avg(rating)'] * ((df['watched']-df['min'])/(df['max']-df['min']))).orderBy("score", ascending=False)
-        df.show()
+        # df.show()
         # df.toPandas().to_csv("test.csv")
         # df.select(col('genres'), col('score')).show()
         return df
@@ -247,6 +249,11 @@ class Search():
 
         intersection = user_a_data.join(user_b_data, ['movieId'], 'inner')
 
+        user_a_count, user_b_count = user_b_data.count(),user_a_data.count()
+        min = user_a_count if user_a_count<user_b_count else user_b_count
+        overlap_proportion = intersection.count()/min
+        print(overlap_proportion)
+
         # returns a dataframe with ratings subtracted by their respective mean ratings
         test = normalize(intersection, ['ratingA', 'ratingB'])
         # test.show()
@@ -270,8 +277,7 @@ class Search():
         # denom_2.show()
 
         similarity = numerator.join(denom_1).join(denom_2)\
-            .withColumn('similarity', col('numerator') / col('denom1') * col('denom2')).select('similarity')
-        # similarity.show()
+            .withColumn('similarity',overlap_proportion*(col('numerator') / col('denom1') * col('denom2'))).select('similarity')
         return similarity
 
     # based on https://spark.apache.org/docs/latest/ml-collaborative-filtering.html#collaborative-filtering
