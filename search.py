@@ -220,10 +220,8 @@ class Search():
     def compare_users(self, user_a, user_b):
 
         # Adapted from: https://stackoverflow.com/questions/44580644/subtract-mean-from-pyspark-dataframe/49606192
-        def normalize(df, columns, mean_a, mean_b):
+        def normalize(df, mean_a, mean_b):
             agg_expr = [mean_a, mean_b]
-            # for column in columns:
-            # averages = df.agg(*agg_expr).collect()[0]
             select_expr = df.columns
             select_expr.append((df['ratingA'] - agg_expr[0]).alias('%s-avg(%s)' % ('ratingA', 'ratingA')))
             select_expr.append((df['ratingB'] - agg_expr[1]).alias('%s-avg(%s)' % ('ratingB', 'ratingB')))
@@ -232,9 +230,6 @@ class Search():
         '''
         Calculate similarity using Pearson's correlation coefficient (slide 9)
         https://personal.utdallas.edu/~nrr150130/cs6375/2015fa/lects/Lecture_23_CF.pdf
-
-        let i = movieId
-        similarity(x, y) = sum((rating_xi - mean rating x) * (rating_yi - mean rating y)) / (sqrt(sum(rating_xi - mean rating x)^2) * sqrt(sum(rating_yi - mean rating y)^2))
         '''
 
         # get movie ids watched by user a
@@ -242,62 +237,45 @@ class Search():
             .alias('userA') \
             .select('movieId', col('rating').alias('ratingA'))
 
-        print("user a: ", user_a_data.count())
-        user_a_data.limit(5).show()
-
         # get movie ids watched by user b
         user_b_data = self.ratings.filter(self.ratings.userId == user_b) \
             .alias('userB') \
             .select('movieId', col('rating').alias('ratingB'))
 
-        print("user b: ", user_b_data.count())
-        user_b_data.limit(5).show()
-
         intersection = user_a_data.join(user_b_data, ['movieId'], 'inner')
-        intersection.show()
 
         mean_rating_a = user_a_data.agg({"ratingA": "avg"}).first()[0]
-        print(mean_rating_a)
         mean_rating_b = user_b_data.agg({"ratingB": "avg"}).first()[0]
-        print(mean_rating_b)
 
-        # user_a_count, user_b_count = user_b_data.count(), user_a_data.count()
-        # min = user_a_count if user_a_count < user_b_count else user_b_count
-        # overlap_proportion = intersection.count()/min
+        user_a_count, user_b_count = user_b_data.count(), user_a_data.count()
+        min = user_a_count if user_a_count < user_b_count else user_b_count
+        overlap_proportion = intersection.count()/min
         # print(overlap_proportion)
 
         # returns a dataframe with ratings subtracted by their respective mean ratings
-        test = normalize(intersection, ['ratingA', 'ratingB'], mean_rating_a, mean_rating_b)
-        test.show()
+        test = normalize(intersection, mean_rating_a, mean_rating_b)
 
         numerator = test.withColumn('numerator', test['ratingA-avg(ratingA)'] * test['ratingB-avg(ratingB)']) \
             .agg({'numerator': 'sum'}).withColumnRenamed("sum(numerator)", "numerator")
-        numerator.show()
 
         denom_1_temp = test.withColumn('intermediate', test['ratingA-avg(ratingA)'] * test['ratingA-avg(ratingA)']) \
             .agg({'intermediate': 'sum'})
 
         # the first sqrt in the denominator
         denom_1 = denom_1_temp.withColumn('denom1', sqrt(col('sum(intermediate)'))).select('denom1')
-        denom_1.show()
 
         denom_2_temp = test.withColumn('intermediate', test['ratingB-avg(ratingB)'] * test['ratingB-avg(ratingB)']) \
             .agg({'intermediate': 'sum'})
 
         # the second sqrt in the denominator
         denom_2 = denom_2_temp.withColumn('denom2', sqrt(col('sum(intermediate)'))).select('denom2')
-        denom_2.show()
 
+        # whole denominator
         denom_all = denom_1.join(denom_2).withColumn('denom', col('denom1') * col('denom2')).select('denom')
-        denom_all.show()
 
         similarity = numerator.join(denom_all) \
-            .withColumn('similarity', col('numerator') / col('denom')).select('similarity')
+            .withColumn('similarity', overlap_proportion * (col('numerator') / col('denom'))).select('similarity')
 
-        similarity.show()
-
-        # similarity = numerator.join(denom_1).join(denom_2)\
-        #     .withColumn('similarity',overlap_proportion*(col('numerator') / col('denom1') * col('denom2'))).select('similarity')
         return similarity
 
     # based on https://spark.apache.org/docs/latest/ml-collaborative-filtering.html#collaborative-filtering
