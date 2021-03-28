@@ -313,3 +313,15 @@ class Search():
             .select('userId', 'title')
 
         return formatted_subset
+
+    def cluster(self, user, n):
+        users = self.ratings.select('userId')\
+            .distinct()\
+            .filter(col('userId') != user)
+
+        print(users.count())
+
+        users_pd = list(users.select('userId').toPandas()['userId'])
+
+        # for each user in users, get their similarity score to user, order by similarity score, limit n
+        return sorted([(i, self.compare_users(user, i).first()[0] or 0) for i in users_pd], key=lambda x: x[1], reverse=True)[:n]
