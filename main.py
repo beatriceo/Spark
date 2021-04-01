@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 import os
 from search import Search
 from plotting import Plotting
+import datetime
 
 def store(spark, datasets):
     pass
@@ -16,11 +17,17 @@ def read(spark):
 def main():
     spark = SparkSession.builder.master("local").appName("Movies").config("conf-key", "conf-value").getOrCreate()
     datasets = read(spark)
-    plotting = Plotting(datasets, spark)
-    # plotting.gen_movie_wordcloud("Toy Story")
-    # plotting.gen_movies_report()
-    # plotting.gen_user_report("1")
     search = Search(datasets, spark)
+    plotting = Plotting(search)
+
+    start = datetime.datetime.now()
+    search.top_each_decade('watches')
+    end = datetime.datetime.now() - start
+    print(end)
+    start = datetime.datetime.now()
+    search.top_each_decade('watches', True)
+    end = datetime.datetime.now() - start
+    print(end)
     # search.search_tags("Toy Story")
     # search.search_user_movies("1")
     # search.search_genre("Adventure")

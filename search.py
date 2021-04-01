@@ -21,6 +21,34 @@ class Search():
         self.spark = spark
         self.model = self.recommend()
 
+    '''
+    This method caches frequent operations that use a given user ID so that other operations on that ID are faster
+    '''
+    def cache_user(self,id):
+        df = self.ratings.filter(self.ratings.userId == id)
+        df.cache()
+        df.join(self.movies, self.movies.movieId == self.ratings.movieId).cache()
+
+    '''
+    This method caches frequent operations that use a given movie ID so that other operations on that ID are faster
+    '''
+    def cache_movie(self,id):
+        self.ratings.filter(self.ratings.movieId == id).cache()
+        self.movies.filter(self.movies.movieId == id).cache()
+        self.ratings.join(self.movies, self.movies.movieId == self.ratings.movieId).cache()
+
+    '''
+    This method caches frequent operations for movies with a given string (name or year) in the title
+    '''
+    def cache_movie_string(self, string):
+        df = self.movies.title.rlike(string)
+        # Filter the dataframe to contain only the matched movies
+        df = self.movies.filter(df)
+        df.cache()
+        # Lazy join with the rating table's rating and id so that the rating tables entries are
+        # only for the matched movies
+        self.ratings.join(df, 'movieId').select("movieId", "rating").cache()
+
     def search_user_movie_count(self, id):
         return self.ratings.filter(self.ratings.userId == id).count()
 
@@ -66,7 +94,7 @@ class Search():
             df = self.movies.filter(df)
             # Lazy join with the rating table's rating and id so that the rating tables entries are
             # only for the matched movies
-            df = df.join(self.ratings,'movieId').select("movieId", "rating")
+            df = self.ratings.join(df,'movieId').select("movieId", "rating")
         # If the search is given an id
         elif name is None:
             # Lazy transformation to filter the ratings table by the id
@@ -197,9 +225,9 @@ class Search():
         # Perform the same transformations performed in list_watches
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
-        watches = movies.join(ratings, movies.movieId == ratings.movieId)
         # Filter the movies to only ones that include the year surrounded by brackets
-        watches = watches.filter(watches.title.rlike("(" + year + ")"))
+        movies = movies.filter(movies.title.rlike("(" + year + ")"))
+        watches = movies.join(ratings, movies.movieId == ratings.movieId)
         watches = watches.groupBy(col("movies.movieId")).agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watches")
         watches = watches.join(movies, movies.movieId == watches.movieId).orderBy(order, ascending=False)
         # Return the top n results

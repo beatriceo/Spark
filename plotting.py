@@ -2,11 +2,12 @@ from search import Search
 import pandas as pd
 from matplotlib import pyplot as plt
 from wordcloud import WordCloud
+import datetime
 
 class Plotting():
 
-    def __init__(self, datasets, spark):
-        self.search = Search(datasets, spark)
+    def __init__(self, search):
+        self.search = search
 
     """
     Use matplot to generate a graphical report for a given user, showing what proportion 
@@ -18,21 +19,23 @@ class Plotting():
         fig, axs = plt.subplots(2, figsize=(20,20))
         fig.suptitle('User report')
         # Get the user's favourite movies
-        df = self.search.search_user_genre(id).orderBy("watched", ascending=False).toPandas()
-        # Group all genres that place after the favourites parameter into 'others'
-        df_other = df[:favourites].copy()
-        new_row = pd.DataFrame(data={
-            'genres': ['others'],
-            'watched': [df['watched'][favourites:].sum()],
-            'avg(rating)': [df['avg(rating)'][favourites:].mean()]
-        })
-        # combine the top values with others
-        df_other = pd.concat([df_other, new_row])
-        axs[0].pie(df_other['watched'], labels=df_other['genres'], autopct='%1.1f%%',
+        df = self.search.search_user_genre(id)
+        df = df.orderBy("watches", ascending=False).toPandas()
+        if df.shape[0]>favourites:
+            # Group all genres that place after the favourites parameter into 'others'
+            df_other = df[:favourites].copy()
+            new_row = pd.DataFrame(data={
+                'genres': ['others'],
+                'watches': [df['watches'][favourites:].sum()],
+                'avg(rating)': [df['avg(rating)'][favourites:].mean()]
+            })
+            # combine the top values with others
+            df = pd.concat([df_other, new_row])
+        axs[0].pie(df['watches'], labels=df['genres'], autopct='%1.1f%%',
                 shadow=True, startangle=90)
         axs[0].axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
         axs[0].set_title("Proportion of movies watched in each genre")
-        axs[1].bar(df_other['genres'], df_other['avg(rating)'])
+        axs[1].bar(df['genres'], df['avg(rating)'])
         axs[1].set_ylabel('Average rating')
         axs[1].set_xlabel('Highest rated genres')
         axs[1].set_title("Average rating for each genre watched")
