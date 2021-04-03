@@ -5,7 +5,7 @@ from pyspark.sql.functions import explode, split, col, min, max, udf, mean, sqrt
 from pyspark.ml import Pipeline
 from pyspark.sql.window import Window
 import pandas as pd
-from pyspark.sql.functions import col, explode, split, count, lit
+from pyspark.sql.functions import col, explode, split, count, lit, from_unixtime
 from pyspark.sql.types import IntegerType
 from pyspark.ml.feature import MinMaxScaler
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -17,7 +17,8 @@ class Search():
     def __init__(self, datasets, spark):
         self.movies = datasets['movies']
         self.links = datasets['links']
-        self.ratings = datasets['ratings'].withColumn("rating", datasets["ratings"].rating.cast(FloatType()))
+        self.ratings = datasets['ratings'].withColumn("rating", datasets["ratings"].rating.cast(FloatType()))\
+            .withColumn("timestamp", from_unixtime(datasets["ratings"].timestamp, 'yyyy-MM-dd HH:mm:ss'))
         self.tags = datasets['tags']
         self.spark = spark
         self.model_explicit, self.model_implicit, self.training, self.test = self.recommend()
@@ -58,7 +59,7 @@ class Search():
 
     def search_user_movies(self, id):
         df = self.ratings.filter(self.ratings.userId == id)
-        return df.join(self.movies, self.movies.movieId == self.ratings.movieId)
+        return df.join(self.movies, ['movieId'])
 
     def search_users_movies(self, ids):
         return [self.search_user_movies(id) for id in ids]
