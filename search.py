@@ -17,7 +17,7 @@ class Search():
     def __init__(self, datasets, spark):
         self.movies = datasets['movies']
         self.links = datasets['links']
-        self.ratings = datasets['ratings'].withColumn("rating", datasets["ratings"].rating.cast(FloatType()))\
+        self.ratings = datasets['ratings'].withColumn("rating", datasets["ratings"].rating.cast(FloatType())) \
             .withColumn("timestamp", from_unixtime(datasets["ratings"].timestamp, 'yyyy-MM-dd HH:mm:ss'))
         self.tags = datasets['tags']
         self.spark = spark
@@ -54,18 +54,30 @@ class Search():
         # only for the matched movies
         self.ratings.join(df, 'movieId').select("movieId", "rating").cache()
 
+    '''
+    Returns a count of how many movies a given user has watched
+    '''
+
     def search_user_movie_count(self, id):
         return self.ratings.filter(self.ratings.userId == id).count()
+
+    '''
+    Given a user id, return a list of movies that user has watched
+    '''
 
     def search_user_movies(self, id):
         df = self.ratings.filter(self.ratings.userId == id)
         return df.join(self.movies, ['movieId'])
 
+    '''
+    Given a list of users, for each user, get a list of movies they have watched
+    '''
+
     def search_users_movies(self, ids):
         return [self.search_user_movies(id) for id in ids]
 
     '''
-    Beatrice
+    Given a user, return the count of each genre the user has watched
     '''
 
     def search_user_genre(self, id):
@@ -74,24 +86,24 @@ class Search():
         df = df.withColumn("genres", explode(split(col("genres"), "\\|")))
         return df.groupBy('genres').agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)", "watches")
 
-    """
+    '''
     Given a list of users, return the count of each genre the user has watched
-    """
+    '''
 
     def search_users_genres(self, ids):
         return [self.search_user_genre(id) for id in ids]
 
-    """
+    '''
     Given a list of users, return movies each user has watched
-    """
+    '''
 
     def search_users_movie_counts(self, ids):
         return [self.search_user_movie_count(id) for id in ids]
 
-    """
+    '''
     Given an ID or name, return the movie/movies that match the name or ID along with 
     average rating and number of watches
-    """
+    '''
 
     def search_movie(self, id=None, name=None):
         # If the search is given a name
@@ -112,58 +124,52 @@ class Search():
         # Group by id, aggregating the mean of ratings and counting the number of occurances of the ids
         df = df.groupBy("movieId").agg({"*": "count", "rating": "mean"})
         # Reattach movie names to the grouped values and return
-        return df.join(self.movies, 'movieId').select("movieId", "avg(rating)", "count(1)", "title").withColumnRenamed("count(1)", "watches")
+        return df.join(self.movies, 'movieId').select("movieId", "avg(rating)", "count(1)", "title").withColumnRenamed(
+            "count(1)", "watches")
 
-    """
+    '''
     Given a year, return all movies that include the year surrounded by brackets from the movies table
-    """
+    '''
 
     def search_movie_year(self, year):
         return self.movies.filter(self.movies.title.rlike("(" + year + ")"))
 
-    """
+    '''
     Given a genre, return all movies that match the genre
-    """
+    '''
 
     def search_genre(self, genre):
         return self.movies.filter(self.movies.genres.rlike(genre))
 
-    """
+    '''
     Given a list of genres, return all movies that match a genre in the list
-    """
+    '''
 
     def search_genres(self, genres):
         return [self.search_genre(genre) for genre in genres]
-        # # Creates a regex 'or' statement of the genres
-        # regex = '({})'.format('|'.join(genres))
-        # # Lazy transformation getting all user movie genres that fulfill the regex. Genres are also an or statement,
-        # # so any overlap is returned
-        # return self.movies.filter(self.movies.genres.rlike(regex))
 
     '''
-       Beatrice
-       '''
+    List the top n movies with highest rating, ordered by the rating
+    '''
 
     def list_rating(self, n):
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
         ratings = ratings.groupBy("movieId").agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)",
                                                                                                      "watches")
-        # movies_ratings = ratings.join(movies, ['movieId'])\
-        #     .orderBy(["avg(rating)", "watched"], ascending=False)
         ratings = ratings.join(movies, movies.movieId == ratings.movieId).orderBy(["avg(rating)", "watches"],
                                                                                   ascending=False)
         return ratings.limit(n).toPandas()
 
     '''
-       Beatrice
-       '''
+    List the top n movies with the highest number of watches, ordered by the number of watches
+    '''
 
     def list_watches(self, n):
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
-        # movies_ratings = movies.join(ratings, movies.movieId == ratings.movieId)  # join movies and ratings on movieId
-        '''sam'''
+
+        '''Sam'''
         watches = ratings.groupBy(col("ratings.movieId")).agg(count("*").alias("watches"))
         watches = watches.join(movies, movies.movieId == watches.movieId).orderBy("watches", ascending=False)
         return watches.limit(n).toPandas()
@@ -189,15 +195,11 @@ class Search():
         df = df.withColumn('score',
                            df['avg(rating)'] * ((df['watches'] - df['min']) / (df['max'] - df['min']))).orderBy("score",
                                                                                                                 ascending=False)
-        # df.show()
-        # df.toPandas().to_csv("test.csv")
-        # df.select(col('genres'), col('score')).show()
         return df
-        # return df.select(col('genres'), col('score'))
 
-    """
+    '''
     Given a user Id, return the movies watched by the user ordered by rating (descending)
-    """
+    '''
 
     def searched_highest_rated(self, id):
         # Filter the ratings dataframe to contain only results that match the user ID
@@ -208,10 +210,10 @@ class Search():
         df = df.orderBy("rating", ascending=False)
         return df
 
-    """
+    '''
     Given the first 3 digits of a year (representing a decade), return the top movies of 
     the decade sorted by order up to a limit
-    """
+    '''
 
     def filter_decade(self, decade, limit, order):
         # Perform the same transformations performed in list_watches
@@ -227,9 +229,9 @@ class Search():
         watches = watches.join(movies, movies.movieId == watches.movieId).orderBy(order, ascending=False)
         return watches.limit(limit).toPandas()
 
-    """
+    '''
     Return the most watched movies of each decade
-    """
+    '''
 
     def top_each_decade(self, column):
         most_watched = pd.DataFrame()
@@ -239,9 +241,9 @@ class Search():
         # Return the transposed result
         return most_watched.T
 
-    """
+    '''
     Given a year and a value n, return the top n movies of that year sorted by order
-    """
+    '''
 
     def filter_year(self, year, n, order):
         # Perform the same transformations performed in list_watches
@@ -256,9 +258,9 @@ class Search():
         # Return the top n results
         return watches.limit(n).toPandas()
 
-    """
+    '''
     Given a movie name, return all user tags for the movie
-    """
+    '''
 
     def search_tags(self, name):
         # Get all movies that match the name
@@ -284,14 +286,14 @@ class Search():
             select_expr.append((df['ratingB'] - agg_expr[1]).alias('%s-avg(%s)' % ('ratingB', 'ratingB')))
             return df.select(select_expr)
 
-        # get movie ids watched by user a
+        # Get movie ids watched by user a
         user_a_data = self.ratings.filter(self.ratings.userId == user_a) \
             .alias('userA') \
             .select('movieId', col('rating').alias('ratingA'))
 
         user_a_data.cache()
 
-        # get movie ids watched by user b
+        # Get movie ids watched by user b
         user_b_data = self.ratings.filter(self.ratings.userId == user_b) \
             .alias('userB') \
             .select('movieId', col('rating').alias('ratingB'))
@@ -308,26 +310,32 @@ class Search():
         min = user_a_count if user_a_count < user_b_count else user_b_count
         overlap_proportion = intersection.count() / min  # Sam's multiplier
 
-        # returns a dataframe with ratings subtracted by their respective mean ratings
+        # Returns a dataframe with ratings subtracted by their respective mean ratings
         ratings_subtracted = normalize(intersection, mean_rating_a, mean_rating_b)
         ratings_subtracted.cache()
 
-        numerator = ratings_subtracted.withColumn('numerator', ratings_subtracted['ratingA-avg(ratingA)'] * ratings_subtracted['ratingB-avg(ratingB)']) \
+        numerator = ratings_subtracted.withColumn('numerator',
+                                                  ratings_subtracted['ratingA-avg(ratingA)'] * ratings_subtracted[
+                                                      'ratingB-avg(ratingB)']) \
             .agg({'numerator': 'sum'}).withColumnRenamed("sum(numerator)", "numerator")
 
-        denom_1_temp = ratings_subtracted.withColumn('intermediate', ratings_subtracted['ratingA-avg(ratingA)'] * ratings_subtracted['ratingA-avg(ratingA)']) \
+        denom_1_temp = ratings_subtracted.withColumn('intermediate',
+                                                     ratings_subtracted['ratingA-avg(ratingA)'] * ratings_subtracted[
+                                                         'ratingA-avg(ratingA)']) \
             .agg({'intermediate': 'sum'})
 
-        # the first sqrt in the denominator
+        # The first sqrt in the denominator
         denom_1 = denom_1_temp.withColumn('denom1', sqrt(col('sum(intermediate)'))).select('denom1')
 
-        denom_2_temp = ratings_subtracted.withColumn('intermediate', ratings_subtracted['ratingB-avg(ratingB)'] * ratings_subtracted['ratingB-avg(ratingB)']) \
+        denom_2_temp = ratings_subtracted.withColumn('intermediate',
+                                                     ratings_subtracted['ratingB-avg(ratingB)'] * ratings_subtracted[
+                                                         'ratingB-avg(ratingB)']) \
             .agg({'intermediate': 'sum'})
 
-        # the second sqrt in the denominator
+        # The second sqrt in the denominator
         denom_2 = denom_2_temp.withColumn('denom2', sqrt(col('sum(intermediate)'))).select('denom2')
 
-        # whole denominator
+        # Whole denominator
         denom_all = denom_1.join(denom_2).withColumn('denom', col('denom1') * col('denom2')).select('denom')
 
         similarity = numerator.join(denom_all) \
@@ -335,7 +343,11 @@ class Search():
 
         return similarity
 
-    # based on https://spark.apache.org/docs/latest/ml-collaborative-filtering.html#collaborative-filtering
+    '''
+    Recommend movies with the ALS algorithm using explicit or explicit feedback.
+    Based on https://spark.apache.org/docs/latest/ml-collaborative-filtering.html#collaborative-filtering
+    '''
+
     def recommend(self):
         ratings = self.ratings
         ratings = ratings.withColumn("userId", ratings.userId.cast(IntegerType()))
@@ -348,26 +360,34 @@ class Search():
                            coldStartStrategy="drop")
 
         als_implicit = ALS(maxIter=5, regParam=0.01, implicitPrefs=True,
-                  userCol="userId", itemCol="movieId", ratingCol="rating",
-                  coldStartStrategy="drop")
+                           userCol="userId", itemCol="movieId", ratingCol="rating",
+                           coldStartStrategy="drop")
 
         model_explicit = als_explicit.fit(training)
         model_implicit = als_implicit.fit(training)
         return model_explicit, model_implicit, training, test
 
+    '''
+    Recommend the top n recommended movies for a list of users using either implicit or explicit feedback models
+    '''
     def recommend_n_movies_for_users(self, n, users, implicit=False):
         model = self.model_implicit if implicit else self.model_explicit
         users = self.ratings.where(self.ratings.userId.isin(users)).distinct()
 
         subset = model.recommendForUserSubset(users, n)
 
-        formatted_subset = subset.withColumn('recs_exp', explode('recommendations'))\
-            .select('userId', col('recs_exp.movieId'), col('recs_exp.rating').alias('rating'))\
+        formatted_subset = subset.withColumn('recs_exp', explode('recommendations')) \
+            .select('userId', col('recs_exp.movieId'), col('recs_exp.rating').alias('rating')) \
             .join(self.movies, 'movieId') \
             .select('userId', 'title', 'rating') \
             .orderBy(asc('userId'), desc('rating'))
 
         return formatted_subset
+
+    '''
+    Cluster users based on movie rating similarity scores. Given a user u, find the top n users with the highest
+    similarity scores to u.
+    '''
 
     def cluster(self, user, n):
         users = self.ratings.select('userId') \
@@ -376,6 +396,6 @@ class Search():
 
         users_pd = list(users.select('userId').toPandas()['userId'])
 
-        # for each user in users, get their similarity score to user, order by similarity score, limit n
+        # For each user in users, get their similarity score to user, order by similarity score, limit n
         return sorted([(i, self.compare_users(user, i).first()[0] or 0) for i in users_pd], key=lambda x: x[1],
                       reverse=True)[:n]
