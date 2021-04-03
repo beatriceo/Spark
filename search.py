@@ -112,7 +112,7 @@ class Search():
         # Group by id, aggregating the mean of ratings and counting the number of occurances of the ids
         df = df.groupBy("movieId").agg({"*": "count", "rating": "mean"})
         # Reattach movie names to the grouped values and return
-        return df.join(self.movies, 'movieId').select("movieId", "avg(rating)", "count(1)", "title")
+        return df.join(self.movies, 'movieId').select("movieId", "avg(rating)", "count(1)", "title").withColumnRenamed("count(1)", "watches")
 
     """
     Given a year, return all movies that include the year surrounded by brackets from the movies table
