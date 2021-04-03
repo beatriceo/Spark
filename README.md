@@ -16,3 +16,5 @@ Run the Jupyter notebook using:
 ```shell
 jupyter lab
 ```
+
+Please specify the directory in which the data should be obtained from in `Cell 2` with the variable `dataset_dir`.
