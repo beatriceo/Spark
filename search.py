@@ -155,11 +155,15 @@ class Search():
     def list_rating(self, n):
         ratings = self.ratings.alias('ratings')
         movies = self.movies.alias('movies')
+
         ratings = ratings.groupBy("movieId").agg({"*": "count", "rating": "mean"}).withColumnRenamed("count(1)",
                                                                                                      "watches")
         ratings = ratings.join(movies, movies.movieId == ratings.movieId).orderBy(["avg(rating)", "watches"],
                                                                                   ascending=False)
-        return ratings.limit(n).toPandas()
+        df = ratings.limit(n).toPandas()
+        # drop duplicated column based on:
+        # https://stackoverflow.com/questions/14984119/python-pandas-remove-duplicate-columns
+        return df.loc[:, ~df.columns.duplicated()]
 
     '''
     List the top n movies with the highest number of watches, ordered by the number of watches
@@ -172,7 +176,11 @@ class Search():
         '''Sam'''
         watches = ratings.groupBy(col("ratings.movieId")).agg(count("*").alias("watches"))
         watches = watches.join(movies, movies.movieId == watches.movieId).orderBy("watches", ascending=False)
-        return watches.limit(n).toPandas()
+
+        df = watches.limit(n).toPandas()
+        # drop duplicated column based on:
+        # https://stackoverflow.com/questions/14984119/python-pandas-remove-duplicate-columns
+        return df.loc[:, ~df.columns.duplicated()]
 
     """
         Given a user id, return a list of their favourite genres, with the score for how much a user likes a genre
@@ -380,7 +388,8 @@ class Search():
             .select('userId', col('recs_exp.movieId'), col('recs_exp.rating').alias('rating')) \
             .join(self.movies, 'movieId') \
             .select('userId', 'title', 'rating') \
-            .orderBy(asc('userId'), desc('rating'))
+            .orderBy(asc('userId'), desc('rating')) \
+            .select('userId', 'title')
 
         return formatted_subset
 
